@@ -163,14 +163,22 @@ export default function ScenarioSelector({ onPick }) {
             fontSize: 17,
             color: 'var(--warm-gray)',
             lineHeight: 1.6,
-            maxWidth: 640,
+            maxWidth: 660,
             margin: '0 auto 56px',
             fontWeight: 500,
             animation: 'slideUpFade 0.7s 0.6s both ease-out'
           }}
         >
-          Pick a scenario to experience Mokitu — a private tutor that watches your screen and
-          answers your questions in real time, by voice or text.
+          The full Mokitu app watches your screen in real time and guides you through anything,
+          by voice or text, instantly. For this{' '}
+          <span style={{
+            background: 'linear-gradient(135deg, oklch(0.58 0.18 30), oklch(0.48 0.20 30))',
+            WebkitBackgroundClip: 'text',
+            WebkitTextFillColor: 'transparent',
+            backgroundClip: 'text',
+            fontWeight: 700
+          }}>demo</span>{' '}
+          we've prepared 3 scenarios so you can experience what that feels like today.
         </p>
 
         <div

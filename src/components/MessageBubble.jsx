@@ -168,7 +168,9 @@ function extractEquation(line) {
     };
   }
 
-  if (trimmed.includes('=')) return { prefix: '', expression: trimmed.replace(/[.]$/, '') };
+  // Only treat as a block equation if = sits at the top level (not inside parens/brackets).
+  // This prevents prose like "the function (f(x) = sqrt(x))" from being rendered as math.
+  if (splitTopLevelEquals(trimmed).length > 1) return { prefix: '', expression: trimmed.replace(/[.]$/, '') };
   return null;
 }
 
@@ -189,8 +191,22 @@ function renderInlineMath(text) {
   return parts.length ? parts : text;
 }
 
+function preprocessMessage(raw) {
+  let text = String(raw ?? '');
+  // Collapse multiline \[...\] blocks into a single line the renderer can detect
+  text = text.replace(/\\\[\s*\n([\s\S]*?)\n\s*\\\]/g, (_, inner) =>
+    `\\[${inner.replace(/\n/g, ' ').trim()}\\]`
+  );
+  // Strip markdown GPT-4o outputs despite being told not to
+  text = text
+    .replace(/^#{1,6}\s+/gm, '')
+    .replace(/\*\*([^*\n]+)\*\*/g, '$1')
+    .replace(/(?<!\*)\*(?!\*)([^*\n]+)\*(?!\*)/g, '$1');
+  return text;
+}
+
 function FormattedMessageText({ text, voice, colors }) {
-  const content = String(text ?? '');
+  const content = preprocessMessage(text);
   const lines = content.split('\n');
   const rendered = lines.map((line, index) => {
     const equation = extractEquation(line);
