@@ -1,0 +1,2 @@
+Replace this file with the actual PNG screenshot named photoshop.png.
+The screenshot must be a real desktop screenshot taken on Windows with the taskbar visible — it represents what Mokitu "sees" in this scenario.
