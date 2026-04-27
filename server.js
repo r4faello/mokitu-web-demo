@@ -10,6 +10,35 @@ const PORT = process.env.PORT || 3000;
 const DIST_DIR = path.join(__dirname, 'dist');
 const SCREENSHOTS_DIR = path.join(__dirname, 'public', 'screenshots');
 
+function loadLocalEnv() {
+  const envPath = path.join(__dirname, '.env');
+  if (!fs.existsSync(envPath)) return;
+
+  const lines = fs.readFileSync(envPath, 'utf8').split(/\r?\n/);
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) continue;
+
+    const equals = trimmed.indexOf('=');
+    if (equals <= 0) continue;
+
+    const key = trimmed.slice(0, equals).trim();
+    let value = trimmed.slice(equals + 1).trim();
+    if (!key || process.env[key] !== undefined) continue;
+
+    if (
+      (value.startsWith('"') && value.endsWith('"')) ||
+      (value.startsWith("'") && value.endsWith("'"))
+    ) {
+      value = value.slice(1, -1);
+    }
+
+    process.env[key] = value;
+  }
+}
+
+loadLocalEnv();
+
 const SCENARIOS = ['photoshop', 'math', 'excel'];
 const MODEL = 'gemini-2.5-flash';
 const ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`;
@@ -20,18 +49,13 @@ if (!fs.existsSync(DIST_DIR)) {
   execSync('npm run build', { cwd: __dirname, stdio: 'inherit' });
 }
 
-const screenshotCache = new Map();
 function loadScreenshot(scenario) {
-  if (screenshotCache.has(scenario)) return screenshotCache.get(scenario);
   const pngPath = path.join(SCREENSHOTS_DIR, `${scenario}.png`);
   if (!fs.existsSync(pngPath)) {
-    screenshotCache.set(scenario, null);
     return null;
   }
   const data = fs.readFileSync(pngPath).toString('base64');
-  const result = { base64: data, mimeType: 'image/png' };
-  screenshotCache.set(scenario, result);
-  return result;
+  return { base64: data, mimeType: 'image/png' };
 }
 
 function trimHistory(history) {

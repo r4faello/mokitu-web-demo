@@ -41,7 +41,7 @@ export const SCENARIOS = [
     gradient: 'linear-gradient(135deg, #FFD5CC 0%, #FFB088 100%)',
     welcome: "I can see your spreadsheet with product data. Need help with formulas?",
     suggestions: [
-      'How do I apply this to the whole column?',
+      'How do I get the product prices?',
       'What does FALSE mean in VLOOKUP?',
       'Walk me through writing the formula.'
     ]
