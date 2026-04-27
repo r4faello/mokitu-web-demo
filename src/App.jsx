@@ -3,6 +3,7 @@ import ScenarioSelector from './components/ScenarioSelector.jsx';
 import DemoView from './components/DemoView.jsx';
 import InitialSplash from './components/InitialSplash.jsx';
 import MobileGate from './components/MobileGate.jsx';
+import { initSRE } from './voice/mathSpoken.js';
 
 const MOBILE_BREAKPOINT = 760;
 
@@ -24,6 +25,8 @@ export default function App() {
   // null = unknown (still checking), true = healthy, false = no API key on server
   const [serverHealthy, setServerHealthy] = useState(null);
   const isMobile = useIsMobile();
+
+  useEffect(() => { initSRE(); }, []);
 
   useEffect(() => {
     let cancelled = false;

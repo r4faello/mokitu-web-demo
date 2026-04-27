@@ -1,152 +1,16 @@
 import { cloneElement, isValidElement } from 'react';
+import {
+  replaceLatexCommandWithGroup,
+  normalizeLatex,
+  stripOuterPair,
+  findTopLevelOperator,
+  splitTopLevelEquals,
+  parseLimit
+} from '../mathRender.js';
 
 const MATHY_RE = /(=|\/|\^|sqrt\(|lim\b|->|\\frac|\\sqrt|\\lim|[a-zA-Z]'\()/;
 const SPREADSHEET_FORMULA_RE =
   /(?:^|[\s:])=?\s*(?:VLOOKUP|XLOOKUP|HLOOKUP|INDEX|MATCH|SUMIF|COUNTIF|IFERROR|IF|SUM|AVERAGE|COUNT)\s*\(|\$?[A-Z]{1,3}\$?\d+(?::\$?[A-Z]{1,3}\$?\d+)?/i;
-
-function replaceLatexCommandWithGroup(text, command, replacement) {
-  let result = '';
-  let cursor = 0;
-  const needle = `\\${command}{`;
-
-  while (cursor < text.length) {
-    const start = text.indexOf(needle, cursor);
-    if (start === -1) {
-      result += text.slice(cursor);
-      break;
-    }
-
-    result += text.slice(cursor, start);
-    let depth = 1;
-    let end = start + needle.length;
-    while (end < text.length && depth > 0) {
-      if (text[end] === '{') depth++;
-      if (text[end] === '}') depth--;
-      end++;
-    }
-
-    const content = text.slice(start + needle.length, end - 1);
-    result += replacement(content);
-    cursor = end;
-  }
-
-  return result;
-}
-
-function normalizeLatex(raw) {
-  let text = String(raw ?? '').trim();
-
-  if (text.startsWith('$') && text.endsWith('$')) text = text.slice(1, -1).trim();
-  if (text.startsWith('\\(') && text.endsWith('\\)')) text = text.slice(2, -2).trim();
-  if (text.startsWith('\\[') && text.endsWith('\\]')) text = text.slice(2, -2).trim();
-
-  text = text
-    .replace(/\\left/g, '')
-    .replace(/\\right/g, '')
-    .replace(/\\,/g, ' ')
-    .replace(/\\;/g, ' ')
-    .replace(/\\!/g, '')
-    .replace(/\\to/g, '->')
-    .replace(/\\rightarrow/g, '->')
-    .replace(/\\cdot/g, '*')
-    .replace(/\\times/g, '*')
-    .replace(/\\prime/g, "'")
-    .replace(/\\lim_\{\s*([A-Za-z])\s*->\s*([^{}]+)\s*\}/g, 'lim ($1->$2)')
-    .replace(/\\lim_\{\s*([A-Za-z])\s+to\s+([^{}]+)\s*\}/g, 'lim ($1->$2)')
-    .replace(/\\lim/g, 'lim');
-
-  text = replaceLatexCommandWithGroup(text, 'sqrt', (content) => `sqrt(${content})`);
-
-  let previous = '';
-  while (previous !== text) {
-    previous = text;
-    text = text.replace(/\\frac\{([^{}]+)\}\{([^{}]+)\}/g, '($1)/($2)');
-  }
-
-  return text.replace(/\s+/g, ' ').trim();
-}
-
-function stripOuterPair(value) {
-  let text = value.trim();
-  let changed = true;
-
-  while (changed && text.length >= 2) {
-    changed = false;
-    const pairs = [
-      ['(', ')'],
-      ['[', ']'],
-      ['{', '}']
-    ];
-
-    for (const [open, close] of pairs) {
-      if (text[0] !== open || text[text.length - 1] !== close) continue;
-      let depth = 0;
-      let wraps = true;
-      for (let i = 0; i < text.length; i++) {
-        if (text[i] === open) depth++;
-        if (text[i] === close) depth--;
-        if (depth === 0 && i < text.length - 1) {
-          wraps = false;
-          break;
-        }
-      }
-      if (wraps) {
-        text = text.slice(1, -1).trim();
-        changed = true;
-      }
-    }
-  }
-
-  return text;
-}
-
-function findTopLevelOperator(text, operators, fromRight = true) {
-  let depth = 0;
-  const start = fromRight ? text.length - 1 : 0;
-  const end = fromRight ? -1 : text.length;
-  const step = fromRight ? -1 : 1;
-
-  for (let i = start; i !== end; i += step) {
-    const ch = text[i];
-    if (ch === ')' || ch === ']' || ch === '}') depth++;
-    else if (ch === '(' || ch === '[' || ch === '{') depth--;
-    else if (depth === 0 && operators.includes(ch)) {
-      if ((ch === '+' || ch === '-') && (i === 0 || '+-*/=('.includes(text[i - 1]))) continue;
-      return i;
-    }
-  }
-
-  return -1;
-}
-
-function splitTopLevelEquals(text) {
-  const parts = [];
-  let depth = 0;
-  let start = 0;
-
-  for (let i = 0; i < text.length; i++) {
-    const ch = text[i];
-    if (ch === '(' || ch === '[' || ch === '{') depth++;
-    else if (ch === ')' || ch === ']' || ch === '}') depth--;
-    else if (ch === '=' && depth === 0) {
-      parts.push(text.slice(start, i).trim());
-      start = i + 1;
-    }
-  }
-
-  if (parts.length) parts.push(text.slice(start).trim());
-  return parts;
-}
-
-function parseLimit(text) {
-  const match = /^lim\s*(?:_\{?\s*)?\(?\s*([A-Za-z])\s*(?:->|to|→)\s*([A-Za-z0-9]+)\s*\}?\)?\s*(.*)$/i.exec(text);
-  if (!match) return null;
-  return {
-    variable: match[1],
-    target: match[2],
-    rest: match[3].trim()
-  };
-}
 
 function mathChildren(children) {
   return children.flat().filter(Boolean).map((child, index) => {

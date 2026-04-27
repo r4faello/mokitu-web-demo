@@ -7,6 +7,8 @@
 //                            so far. The speaker queues each completed sentence to
 //                            speechSynthesis as soon as it's detected.
 
+import { latexToSpoken } from './mathSpoken.js';
+
 let voicesCache = null;
 
 function getVoices() {
@@ -45,8 +47,45 @@ function pickPreferredVoice() {
   return voices[0] || null;
 }
 
+// Regex fallback for when SRE hasn't initialised yet.
+function latexExprFallback(expr) {
+  return expr
+    .replace(/\\frac\{([^{}]+)\}\{([^{}]+)\}/g, '$1 over $2')
+    .replace(/\\sqrt\{([^{}]+)\}/g, 'square root of $1')
+    .replace(/\^\{2\}/g, ' squared').replace(/\^2\b/g, ' squared')
+    .replace(/\^\{3\}/g, ' cubed').replace(/\^3\b/g, ' cubed')
+    .replace(/\^\{([^{}]+)\}/g, ' to the power of $1')
+    .replace(/\^(\w)/g, ' to the power of $1')
+    .replace(/\\infty/g, 'infinity').replace(/\\pi\b/g, 'pi')
+    .replace(/\\times|\\cdot/g, ' times ')
+    .replace(/\\rightarrow|\\to\b/g, ' approaches ')
+    .replace(/\\[a-zA-Z]+/g, '').replace(/[{}]/g, '');
+}
+
+// Replaces every math region in text with its spoken equivalent.
+// Handles $...$, $$...$$, \(...\), \[...\], and bare EQ: prefix.
+const MATH_REGION_RE = /\$\$([^$]+)\$\$|\\\[([^\]]*)\\\]|\$([^$\n]+)\$|\\\(([^)]*)\\\)|\bEQ\s*:\s*([^\n]+)/g;
+
+function mathToSpeech(text) {
+  const converted = text.replace(MATH_REGION_RE, (_, ...groups) => {
+    const expr = (groups.find((g) => g !== undefined) ?? '').trim();
+    const spoken = latexToSpoken(expr) ?? latexExprFallback(expr);
+    return ` ${spoken} `;
+  });
+
+  // Clean up any bare LaTeX that slipped through without delimiters.
+  return converted
+    .replace(/\\frac\{([^{}]+)\}\{([^{}]+)\}/g, '$1 over $2')
+    .replace(/\\sqrt\{([^{}]+)\}/g, 'square root of $1')
+    .replace(/\^\{([^{}]+)\}/g, ' to the power of $1')
+    .replace(/\^2\b/g, ' squared').replace(/\^3\b/g, ' cubed')
+    .replace(/[{}\\]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 function makeUtterance(text, onEnd) {
-  const utt = new SpeechSynthesisUtterance(text);
+  const utt = new SpeechSynthesisUtterance(mathToSpeech(text));
   utt.rate = 0.95;
   utt.pitch = 1;
   const v = pickPreferredVoice();

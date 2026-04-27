@@ -40,9 +40,13 @@ function loadLocalEnv() {
 loadLocalEnv();
 
 const SCENARIOS = ['photoshop', 'math', 'excel'];
-const MODEL = 'gemini-2.5-flash';
-const ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`;
 const MAX_CONTEXT_MESSAGES = 20;
+
+// Azure OpenAI config — set these in .env:
+//   AZURE_OPENAI_ENDPOINT  e.g. https://my-resource.openai.azure.com
+//   AZURE_OPENAI_KEY       your Azure OpenAI API key
+//   AZURE_OPENAI_DEPLOYMENT  e.g. gpt-4o
+const API_VERSION = '2024-10-21';
 
 if (!fs.existsSync(DIST_DIR)) {
   console.log('[server] No dist/ found — running build...');
@@ -82,46 +86,54 @@ app.post('/api/ask', async (req, res) => {
       return res.status(400).json({ error: `scenario must be one of ${SCENARIOS.join(', ')}` });
     }
 
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
-      return res.status(500).json({ error: 'GEMINI_API_KEY not configured on server.' });
+    const apiKey = process.env.AZURE_OPENAI_KEY;
+    const azureEndpoint = process.env.AZURE_OPENAI_ENDPOINT?.replace(/\/$/, '');
+    const deployment = process.env.AZURE_OPENAI_DEPLOYMENT;
+    if (!apiKey || !azureEndpoint || !deployment) {
+      return res.status(500).json({ error: 'Azure OpenAI not configured on server.' });
     }
 
     const screenshot = loadScreenshot(scenario);
 
-    const historyParts = trimHistory(conversationHistory).map((m) => ({
-      role: m.role === 'mokitu' ? 'model' : 'user',
-      parts: [{ text: m.text || '' }]
+    const historyMessages = trimHistory(conversationHistory).map((m) => ({
+      role: m.role === 'mokitu' ? 'assistant' : 'user',
+      content: m.text || ''
     }));
 
-    const userParts = [];
-    if (screenshot) {
-      userParts.push({
-        inline_data: { mime_type: screenshot.mimeType, data: screenshot.base64 }
-      });
-    }
-    userParts.push({ text: message });
+    // Build the final user message — multimodal if a screenshot is available
+    const userContent = screenshot
+      ? [
+          { type: 'image_url', image_url: { url: `data:${screenshot.mimeType};base64,${screenshot.base64}` } },
+          { type: 'text', text: message }
+        ]
+      : message;
 
     const body = {
-      systemInstruction: { parts: [{ text: buildSystemPrompt(scenario) }] },
-      contents: historyParts.concat([{ role: 'user', parts: userParts }])
+      messages: [
+        { role: 'system', content: buildSystemPrompt(scenario) },
+        ...historyMessages,
+        { role: 'user', content: userContent }
+      ],
+      max_tokens: 1024,
+      temperature: 0.7
     };
 
-    const r = await fetch(`${ENDPOINT}?key=${encodeURIComponent(apiKey)}`, {
+    const url = `${azureEndpoint}/openai/deployments/${deployment}/chat/completions?api-version=${API_VERSION}`;
+    const r = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'api-key': apiKey },
       body: JSON.stringify(body)
     });
 
     if (!r.ok) {
       const errText = await r.text().catch(() => '');
-      console.error('[gemini]', r.status, errText.slice(0, 300));
-      return res.status(502).json({ error: `Gemini error ${r.status}` });
+      console.error('[azure]', r.status, errText.slice(0, 300));
+      return res.status(502).json({ error: `Azure OpenAI error ${r.status}` });
     }
 
     const data = await r.json();
-    const text = data?.candidates?.[0]?.content?.parts?.map((p) => p.text).join('') || '';
-    if (!text) return res.status(502).json({ error: 'Empty response from Gemini.' });
+    const text = data?.choices?.[0]?.message?.content || '';
+    if (!text) return res.status(502).json({ error: 'Empty response from Azure OpenAI.' });
 
     // Strip [HIGHLIGHT ...] tags just in case the model emits them; preserve paragraph breaks for TTS pacing
     const clean = text.replace(/\[HIGHLIGHT\s+x:-?\d+\s+y:-?\d+\s+w:\d+\s+h:\d+\]/gi, '').trim();
@@ -133,7 +145,8 @@ app.post('/api/ask', async (req, res) => {
 });
 
 app.get('/api/health', (_req, res) => {
-  res.json({ ok: true, hasKey: !!process.env.GEMINI_API_KEY });
+  const hasKey = !!(process.env.AZURE_OPENAI_KEY && process.env.AZURE_OPENAI_ENDPOINT && process.env.AZURE_OPENAI_DEPLOYMENT);
+  res.json({ ok: true, hasKey });
 });
 
 app.use(express.static(DIST_DIR));
@@ -148,7 +161,7 @@ app.get('*', (_req, res) => {
 
 app.listen(PORT, () => {
   console.log(`[server] Mokitu web demo listening on http://localhost:${PORT}`);
-  if (!process.env.GEMINI_API_KEY) {
-    console.warn('[server] WARNING: GEMINI_API_KEY is not set — /api/ask will return 500.');
+  if (!process.env.AZURE_OPENAI_KEY || !process.env.AZURE_OPENAI_ENDPOINT || !process.env.AZURE_OPENAI_DEPLOYMENT) {
+    console.warn('[server] WARNING: AZURE_OPENAI_KEY / AZURE_OPENAI_ENDPOINT / AZURE_OPENAI_DEPLOYMENT not fully set.');
   }
 });
